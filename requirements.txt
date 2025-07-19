@@ -1,4 +1,2 @@
-gspread
+undetected-chromedriver
 gspread-dataframe
-pandas
-selenium
