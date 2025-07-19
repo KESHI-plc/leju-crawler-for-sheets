@@ -7,55 +7,53 @@ WORKSHEET_NAME = '桃園市'
 
 import os
 import time
+import json
 import gspread
 import pandas as pd
 from gspread_dataframe import set_with_dataframe
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 
 def get_google_creds():
-    # 從 GitHub Secrets 獲取憑證內容
     creds_json_str = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
     if not creds_json_str:
         raise ValueError("Google Sheets credentials not found in GitHub Secrets!")
-    
-    import json
     return json.loads(creds_json_str)
 
 def scrape_leju():
-    print("--- 啟動爬蟲程式 ---")
+    print("--- 啟動【Undetected-Chromedriver】爬蟲程式 ---")
     
     city_code = 'H' # 桃園市
-    
-    chrome_options = Options()
-    chrome_options.add_argument("--headless") # 在虛擬環境中必須使用無頭模式
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--start-maximized")
-    
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
     all_projects = []
-    page = 1
-    
-    while True:
-        if page > 20: # 安全機制，避免無限迴圈
-             print("已達到20頁上限，自動停止。")
-             break
-        
-        url = f"https://www.leju.com.tw/sales_list?city={city_code}&is_new=1&p={page}"
-        print(f"\n正在處理頁面: {url}")
-        driver.get(url)
+    driver = None # 先宣告 driver
 
-        try:
-            WebDriverWait(driver, 20).until(
+    try:
+        options = uc.ChromeOptions()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        
+        print("正在初始化 uc driver...")
+        driver = uc.Chrome(options=options, use_subprocess=False)
+        print("Driver 初始化成功。")
+
+        page = 1
+        while True:
+            if page > 20: 
+                print("已達到20頁上限，自動停止。")
+                break
+            
+            url = f"https://www.leju.com.tw/sales_list?city={city_code}&is_new=1&p={page}"
+            print(f"\n正在處理頁面: {url}")
+            driver.get(url)
+
+            # 等待Cloudflare驗證，或者直接等待目標元素出現
+            WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "build-item"))
             )
+            
             build_items = driver.find_elements(By.CLASS_NAME, "build-item")
             
             if not build_items:
@@ -66,17 +64,15 @@ def scrape_leju():
             
             for item in build_items:
                 try:
+                    # (此處省略了抓取細節的程式碼，因為它們都一樣)
                     name = item.find_element(By.CSS_SELECTOR, ".build-name a").text
                     price = item.find_element(By.CSS_SELECTOR, ".build-price").text.replace('\n', ' ').replace('萬/坪', '').strip()
                     address = item.find_element(By.CSS_SELECTOR, ".build-address").text
-                    
                     info_elements = item.find_elements(By.CSS_SELECTOR, ".build-info li")
                     total_households = info_elements[0].text.replace('總戶數', '').strip() if len(info_elements) > 0 else ''
                     completion_date = info_elements[1].text.replace('屋齡', '').replace('完工日', '').strip() if len(info_elements) > 1 else ''
                     public_facility = info_elements[2].text.replace('公設比', '').strip() if len(info_elements) > 2 else ''
-                    
                     room_elements = item.find_elements(By.CSS_SELECTOR, ".build-rooms .room-item")
-                    
                     project_data = {
                         "建案名稱": name, "總戶數": total_households, "完工日期": completion_date,
                         "開價(坪)": price, "區域": address.split(' ')[0] if address else '',
@@ -89,20 +85,21 @@ def scrape_leju():
                     }
                     all_projects.append(project_data)
                     print(f"  - 已抓取: {name}")
-
                 except Exception as e:
                     print(f"    -> 抓取某個項目時出錯: {e}")
                     continue
 
             page += 1
-            time.sleep(2)
+            time.sleep(3) # 稍微延長等待時間
 
-        except Exception as e:
-            print(f"處理頁面時發生嚴重錯誤: {e}")
-            break
-            
-    driver.quit()
-    print("\n--- 爬取完成，共抓取到", len(all_projects), "筆資料 ---")
+    except Exception as e:
+        print(f"處理頁面時發生嚴重錯誤: {e}")
+    
+    finally:
+        if driver:
+            driver.quit()
+        print("\n--- 爬取完成，共抓取到", len(all_projects), "筆資料 ---")
+    
     return all_projects
 
 def update_google_sheet(data):
@@ -113,8 +110,6 @@ def update_google_sheet(data):
     print("\n--- 開始更新 Google Sheet ---")
     try:
         new_df = pd.DataFrame(data)
-        
-        # 使用從 secrets 讀取到的憑證
         creds = get_google_creds()
         gc = gspread.service_account_from_dict(creds)
         sh = gc.open(GOOGLE_SHEET_NAME)
@@ -125,13 +120,10 @@ def update_google_sheet(data):
         if existing_data:
             existing_df = pd.DataFrame(existing_data)
             existing_names = set(existing_df['建案名稱'])
-            print(f"工作表中已存在 {len(existing_names)} 筆資料。")
-            
             unique_new_df = new_df[~new_df['建案名稱'].isin(existing_names)]
             
             if unique_new_df.empty:
                 print("所有抓取的資料都已存在，無需新增。")
-                return
             else:
                 print(f"找到 {len(unique_new_df)} 筆需要新增的資料。")
                 next_row = len(existing_data) + 2 
