@@ -35,6 +35,7 @@ def scrape_leju():
     chrome_options.add_argument("--headless") # 在虛擬環境中必須使用無頭模式
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--start-maximized")
     
     service = Service()
     driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -52,7 +53,7 @@ def scrape_leju():
         driver.get(url)
 
         try:
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "build-item"))
             )
             build_items = driver.find_elements(By.CLASS_NAME, "build-item")
