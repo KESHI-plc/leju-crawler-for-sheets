@@ -1,0 +1,37 @@
+name: Leju Crawler Schedule
+
+on:
+  # 1. 允許手動觸發
+  workflow_dispatch:
+  
+  # 2. 設定定時執行 (使用 UTC 時間)
+  #    下面的 "0 22 * * *" 表示每天 UTC 時間 22:00 執行
+  #    換算成台灣時間 (UTC+8) 是每天早上 6:00
+  schedule:
+    - cron: '0 22 * * *'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Checkout repository
+      uses: actions/checkout@v3
+
+    - name: 2. Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 3. Set up Chrome
+      uses: browser-actions/setup-chrome@v1
+
+    - name: 4. Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 5. Run the crawler script
+      env:
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+      run: python crawler.py
