@@ -38,5 +38,4 @@ jobs:
         TARGET_URL: ${{ github.event.client_payload.url }}
         GDRIVE_FOLDER_ID: ${{ github.event.client_payload.folder_id }}
         GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }} # <--- 新增這一行
-      run: python downloader.py
       run: python downloader.py # 我們等一下會建立這個新的 Python 檔案
