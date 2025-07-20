@@ -1,18 +1,14 @@
 name: Leju Ultimate Workflow
 
 on:
-  # 觸發器一：允許手動從 Actions 分頁觸發
-  workflow_dispatch:
-
-  # 觸發器二：允許外部 API 透過 repository_dispatch 觸發
+  # 這個工作流程現在只接受一種觸發方式：
+  # 由我們的 Google Sheet 發來的外部 API 命令
   repository_dispatch:
-    types: [download-html] # 我們定義一個事件類型叫做 download-html
+    types: [download-html]
 
 jobs:
-  # 工作一：從外部命令下載 HTML
-  download:
-    # 這個工作只有在是 repository_dispatch 觸發時才執行
-    if: github.event_name == 'repository_dispatch'
+  # 我們現在只有一個工作，就叫做 build
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,15 +23,13 @@ jobs:
     - name: 3. Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        # --no-cache-dir 會強制不使用快取，確保每次都重新下載
-        # -v 會顯示詳細的安裝過程日誌
-        pip install --no-cache-dir -v -r requirements.txt
+        pip install --no-cache-dir -r requirements.txt
     
     - name: 4. Run Downloader Script
       env:
-        # 將我們需要的秘密變數和觸發時傳入的參數，都設定為環境變數
+        # 將所有需要的秘密變數和從外部傳入的參數設定為環境變數
+        # 這是整個流程的關鍵
         GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
         TARGET_URL: ${{ github.event.client_payload.url }}
-        GDRIVE_FOLDER_ID: ${{ github.event.client_payload.folder_id }}
-        GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }} # <--- 新增這一行
-      run: python downloader.py # 我們等一下會建立這個新的 Python 檔案
+        GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }}
+      run: python downloader.py
